@@ -118,7 +118,8 @@ function loadModel() {
         },
         function(error) {
             console.error('Ошибка загрузки модели:', error);
-            loadingDiv.innerHTML = '<p style="color: red;">Ошибка загрузки модели. Убедитесь, что файл model.glb находится в папке проекта.</p>';
+            console.error('Путь к модели:', modelPath);
+            loadingDiv.innerHTML = '<p style="color: red;">Ошибка загрузки модели: ' + (error.message || 'Неизвестная ошибка') + '<br>Проверьте путь: ' + modelPath + '</p>';
         }
     );
 }
