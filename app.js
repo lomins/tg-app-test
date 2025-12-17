@@ -3,6 +3,23 @@ let scene, camera, renderer, model;
 let isDragging = false;
 let previousMousePosition = { x: 0, y: 0 };
 
+// Параметры вращения с инерцией
+let rotationVelocity = 0;
+let targetRotation = 0;
+const rotationDamping = 0.95; // Затухание инерции (0.95 = плавное затухание)
+const rotationSensitivity = 0.005;
+
+// Параметры зума
+let cameraDistance = 5;
+const minDistance = 2.5;
+const maxDistance = 8;
+const zoomSpeed = 0.1;
+const zoomSensitivity = 0.02;
+
+// Для pinch жеста
+let initialPinchDistance = 0;
+let initialCameraDistance = 5;
+
 // Создание сцены
 function init() {
     const container = document.getElementById('canvas-container');
@@ -18,7 +35,7 @@ function init() {
         0.1,
         1000
     );
-    camera.position.set(0, 1.5, 3);
+    updateCameraPosition();
     
     // Рендерер
     renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -35,8 +52,8 @@ function init() {
     directionalLight.castShadow = true;
     scene.add(directionalLight);
     
-    // Создание простой 3D модели девушки из примитивов
-    createSimpleGirl();
+    // Загрузка модели
+    loadModel();
     
     // Обработчики событий
     setupEventListeners();
@@ -45,125 +62,105 @@ function init() {
     animate();
 }
 
-// Создание простой модели девушки из примитивов
-function createSimpleGirl() {
-    const group = new THREE.Group();
-    
-    // Голова
-    const headGeometry = new THREE.SphereGeometry(0.2, 32, 32);
-    const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
-    const head = new THREE.Mesh(headGeometry, headMaterial);
-    head.position.set(0, 1.4, 0);
-    head.castShadow = true;
-    group.add(head);
-    
-    // Тело (торс)
-    const bodyGeometry = new THREE.CylinderGeometry(0.15, 0.2, 0.5, 32);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff6b9d });
-    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    body.position.set(0, 1.0, 0);
-    body.castShadow = true;
-    group.add(body);
-    
-    // Грудь
-    const chestGeometry = new THREE.SphereGeometry(0.12, 32, 32);
-    const chestMaterial = new THREE.MeshStandardMaterial({ color: 0xff6b9d });
-    const chest1 = new THREE.Mesh(chestGeometry, chestMaterial);
-    chest1.position.set(-0.1, 1.15, 0.1);
-    chest1.castShadow = true;
-    group.add(chest1);
-    
-    const chest2 = new THREE.Mesh(chestGeometry, chestMaterial);
-    chest2.position.set(0.1, 1.15, 0.1);
-    chest2.castShadow = true;
-    group.add(chest2);
-    
-    // Руки
-    const armGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.4, 32);
-    const armMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
-    
-    // Левая рука
-    const leftArm = new THREE.Mesh(armGeometry, armMaterial);
-    leftArm.position.set(-0.25, 1.0, 0);
-    leftArm.rotation.z = 0.3;
-    leftArm.castShadow = true;
-    group.add(leftArm);
-    
-    // Правая рука
-    const rightArm = new THREE.Mesh(armGeometry, armMaterial);
-    rightArm.position.set(0.25, 1.0, 0);
-    rightArm.rotation.z = -0.3;
-    rightArm.castShadow = true;
-    group.add(rightArm);
-    
-    // Ноги
-    const legGeometry = new THREE.CylinderGeometry(0.06, 0.06, 0.6, 32);
-    const legMaterial = new THREE.MeshStandardMaterial({ color: 0x4a90e2 });
-    
-    // Левая нога
-    const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
-    leftLeg.position.set(-0.1, 0.3, 0);
-    leftLeg.castShadow = true;
-    group.add(leftLeg);
-    
-    // Правая нога
-    const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
-    rightLeg.position.set(0.1, 0.3, 0);
-    rightLeg.castShadow = true;
-    group.add(rightLeg);
-    
-    // Волосы
-    const hairGeometry = new THREE.SphereGeometry(0.22, 32, 32);
-    const hairMaterial = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
-    const hair = new THREE.Mesh(hairGeometry, hairMaterial);
-    hair.position.set(0, 1.5, -0.05);
-    hair.scale.set(1, 1.2, 1.1);
-    hair.castShadow = true;
-    group.add(hair);
-    
-    // Платформа
-    const platformGeometry = new THREE.CylinderGeometry(1, 1, 0.1, 32);
-    const platformMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
-    platform.position.y = 0;
-    platform.receiveShadow = true;
-    scene.add(platform);
-    
-    model = group;
-    scene.add(group);
+// Обновление позиции камеры
+function updateCameraPosition() {
+    camera.position.x = 0;
+    camera.position.y = 1.5;
+    camera.position.z = cameraDistance;
+    camera.lookAt(0, 1.5, 0);
 }
 
-// Обработчики событий для вращения
+// Загрузка 3D модели
+function loadModel() {
+    const loader = new THREE.GLTFLoader();
+    const loadingDiv = document.getElementById('loading');
+    
+    // Показываем индикатор загрузки
+    loadingDiv.style.display = 'block';
+    
+    // Путь к модели - замените на ваш файл
+    const modelPath = 'models/model.glb'; // или 'models/model.gltf'
+    
+    loader.load(
+        modelPath,
+        function(gltf) {
+            model = gltf.scene;
+            
+            // Центрируем модель
+            const box = new THREE.Box3().setFromObject(model);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            
+            // Масштабируем модель, если она слишком большая или маленькая
+            const maxDimension = Math.max(size.x, size.y, size.z);
+            const scale = 1.5 / maxDimension; // Делаем модель немного меньше, чтобы не выходила за границы
+            model.scale.multiplyScalar(scale);
+            
+            // Центрируем по центру сцены
+            model.position.sub(center.multiplyScalar(scale));
+            model.position.y = 0;
+            
+            // Включаем тени для всех мешей
+            model.traverse(function(child) {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            scene.add(model);
+            loadingDiv.style.display = 'none';
+        },
+        function(progress) {
+            // Прогресс загрузки (опционально)
+            const percent = (progress.loaded / progress.total * 100).toFixed(0);
+            console.log('Загрузка: ' + percent + '%');
+        },
+        function(error) {
+            console.error('Ошибка загрузки модели:', error);
+            loadingDiv.innerHTML = '<p style="color: red;">Ошибка загрузки модели. Убедитесь, что файл model.glb находится в папке проекта.</p>';
+        }
+    );
+}
+
+// Обработчики событий
 function setupEventListeners() {
     const canvas = renderer.domElement;
     
-    // Мышь
+    // Мышь - вращение
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
+    canvas.addEventListener('mouseleave', onMouseUp);
+    
+    // Колесико мыши - зум
+    canvas.addEventListener('wheel', onWheel, { passive: false });
     
     // Сенсорные устройства
-    canvas.addEventListener('touchstart', onTouchStart);
-    canvas.addEventListener('touchmove', onTouchMove);
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', onTouchMove, { passive: false });
     canvas.addEventListener('touchend', onTouchEnd);
     
     // Изменение размера окна
     window.addEventListener('resize', onWindowResize);
 }
 
+// Обработка мыши
 function onMouseDown(event) {
     isDragging = true;
     previousMousePosition = { x: event.clientX, y: event.clientY };
+    rotationVelocity = 0; // Сбрасываем инерцию при новом захвате
 }
 
 function onMouseMove(event) {
     if (!isDragging || !model) return;
     
     const deltaX = event.clientX - previousMousePosition.x;
-    const deltaY = event.clientY - previousMousePosition.y;
     
-    model.rotation.y += deltaX * 0.01;
-    model.rotation.x += deltaY * 0.01;
+    // Вращение только по горизонтали (Y-ось)
+    const rotationDelta = deltaX * rotationSensitivity;
+    targetRotation += rotationDelta;
+    rotationVelocity = rotationDelta; // Сохраняем скорость для инерции
     
     previousMousePosition = { x: event.clientX, y: event.clientY };
 }
@@ -172,28 +169,79 @@ function onMouseUp() {
     isDragging = false;
 }
 
+// Зум колесиком мыши
+function onWheel(event) {
+    event.preventDefault();
+    
+    const delta = event.deltaY > 0 ? zoomSpeed : -zoomSpeed;
+    cameraDistance += delta;
+    
+    // Ограничиваем зум
+    cameraDistance = Math.max(minDistance, Math.min(maxDistance, cameraDistance));
+    
+    updateCameraPosition();
+}
+
+// Обработка сенсорных устройств
 function onTouchStart(event) {
     if (event.touches.length === 1) {
+        // Одно касание - вращение
         isDragging = true;
         previousMousePosition = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+        rotationVelocity = 0;
+    } else if (event.touches.length === 2) {
+        // Два касания - зум (pinch)
+        isDragging = false;
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        initialPinchDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+        initialCameraDistance = cameraDistance;
     }
 }
 
 function onTouchMove(event) {
-    if (!isDragging || !model || event.touches.length !== 1) return;
-    
     event.preventDefault();
-    const deltaX = event.touches[0].clientX - previousMousePosition.x;
-    const deltaY = event.touches[0].clientY - previousMousePosition.y;
     
-    model.rotation.y += deltaX * 0.01;
-    model.rotation.x += deltaY * 0.01;
+    if (!model) return;
     
-    previousMousePosition = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    if (event.touches.length === 1 && isDragging) {
+        // Вращение одним пальцем
+        const deltaX = event.touches[0].clientX - previousMousePosition.x;
+        const rotationDelta = deltaX * rotationSensitivity;
+        targetRotation += rotationDelta;
+        rotationVelocity = rotationDelta;
+        
+        previousMousePosition = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    } else if (event.touches.length === 2) {
+        // Зум двумя пальцами (pinch)
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        const currentPinchDistance = Math.hypot(
+            touch2.clientX - touch1.clientX,
+            touch2.clientY - touch1.clientY
+        );
+        
+        const pinchDelta = (initialPinchDistance - currentPinchDistance) * zoomSensitivity;
+        cameraDistance = initialCameraDistance + pinchDelta;
+        
+        // Ограничиваем зум
+        cameraDistance = Math.max(minDistance, Math.min(maxDistance, cameraDistance));
+        
+        updateCameraPosition();
+    }
 }
 
-function onTouchEnd() {
-    isDragging = false;
+function onTouchEnd(event) {
+    if (event.touches.length === 0) {
+        isDragging = false;
+    } else if (event.touches.length === 1) {
+        // Если остался один палец, переключаемся на режим вращения
+        isDragging = true;
+        previousMousePosition = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    }
 }
 
 function onWindowResize() {
@@ -202,13 +250,32 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Анимационный цикл
+// Анимационный цикл с инерцией
 function animate() {
     requestAnimationFrame(animate);
+    
+    if (model) {
+        // Применяем инерцию к вращению
+        if (!isDragging && Math.abs(rotationVelocity) > 0.001) {
+            targetRotation += rotationVelocity;
+            rotationVelocity *= rotationDamping; // Затухание
+        }
+        
+        // Плавное вращение к целевому углу
+        const currentRotation = model.rotation.y;
+        const rotationDiff = targetRotation - currentRotation;
+        
+        // Нормализуем угол в диапазон [-PI, PI]
+        let normalizedDiff = rotationDiff;
+        while (normalizedDiff > Math.PI) normalizedDiff -= 2 * Math.PI;
+        while (normalizedDiff < -Math.PI) normalizedDiff += 2 * Math.PI;
+        
+        // Плавная интерполяция
+        model.rotation.y += normalizedDiff * 0.1;
+    }
+    
     renderer.render(scene, camera);
 }
 
 // Инициализация при загрузке
 init();
-
-
